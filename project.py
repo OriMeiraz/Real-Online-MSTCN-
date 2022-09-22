@@ -117,7 +117,6 @@ def main(shape, video_path):
 
 
 if __name__ == '__main__':
-    print("orubin")
     video_path = "/data/shared-data/scalpel/APAS-Activities/data/APAS/frames/P016_balloon2_side"
     outputs = main(shape, video_path)
     print(outputs[n-1])
