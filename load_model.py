@@ -100,17 +100,17 @@ def load_model(args=args, path=None):
     if path == None:
         if args.network == "MS-TCN2":
             if args.task == "tools":
-                path = f"models/{args.dataset}/08.09.2022 13:34:26  task:{args.task} splits: all net: MS-TCN2 is Offline: True window dim: 6/split0"
+                path = f"/data/home/ori.meiraz/models/{args.dataset}/08.09.2022 13:34:26  task:{args.task} splits: all net: MS-TCN2 is Offline: True window dim: 6/split0"
             elif args.task == "multi-taks":
-                path = f"models/{args.dataset}/08.09.2022 14:37:19  task:{args.task} splits: all net: MS-TCN2 is Offline: True window dim: 6/split0"
+                path = f"/data/home/ori.meiraz/models/{args.dataset}/08.09.2022 14:37:19  task:{args.task} splits: all net: MS-TCN2 is Offline: True window dim: 6/split0"
         elif args.network == "MS-TCN2 late":
             if args.task == "gestures":
-                path = f"models/{args.dataset}/08.09.2022 15:37:10  task:{args.task} splits: all net: MS-TCN2 late is Offline: True window dim: 6/split0"
+                path = f"/data/home/ori.meiraz/models/{args.dataset}/08.09.2022 15:37:10  task:{args.task} splits: all net: MS-TCN2 late is Offline: True window dim: 6/split0"
             elif args.task == "multi-taks":
-                path = f"models/{args.dataset}/08.09.2022 17:39:32  task:multi-taks splits: all net: MS-TCN2 late is Offline: True window dim: 6/split0"
+                path = f"/data/home/ori.meiraz/models/{args.dataset}/08.09.2022 17:39:32  task:multi-taks splits: all net: MS-TCN2 late is Offline: True window dim: 6/split0"
         else:
             if args.task == "gestures":
-                path = "models/APAS/08.09.2022 18:18:13  task:gestures splits: all net: MS-TCN2 early is Offline: True window dim: 6/split0/"
+                path = "/data/home/ori.meiraz/models/APAS/08.09.2022 18:18:13  task:gestures splits: all net: MS-TCN2 early is Offline: True window dim: 6/split0/"
 
     num_classes_list, _, _ = get_num_classes_list(args)
     if args.network == "MS-TCN2":

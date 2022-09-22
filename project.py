@@ -82,7 +82,7 @@ def extraction_examples(extractor, shape: tuple = None, num_examples=30):
 def run(video_path, model, extractor, mean, std):
     outputs = []
     frame_gen = FrameGenerator(video_path)
-    print(colored("initialize Model recreate - ready to start straming", "yellow"))
+    print(colored("initialize Model recreate - ready to start streaming", "yellow"))
     t0 = time.time()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=UserWarning)
