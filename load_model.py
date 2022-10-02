@@ -28,7 +28,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', choices=['APAS'], default="APAS")
     parser.add_argument(
-        '--task', choices=['gestures', 'tools', 'multi-taks'], default="multi-taks")
+        '--task', choices=['gestures', 'tools', 'multi-taks'], default="gestures")
     parser.add_argument(
         '--network', choices=['MS-TCN2', 'MS-TCN2 late', 'MS-TCN2 early'], default="MS-TCN2")
     parser.add_argument(
@@ -103,21 +103,15 @@ def load_model(args=args, path=None):
                 path = f"/data/home/ori.meiraz/models/{args.dataset}/08.09.2022 13:34:26  task:{args.task} splits: all net: MS-TCN2 is Offline: True window dim: 6/split0"
             elif args.task == "multi-taks":
                 path = f"/data/home/ori.meiraz/models/{args.dataset}/08.09.2022 14:37:19  task:{args.task} splits: all net: MS-TCN2 is Offline: True window dim: 6/split0"
-        elif args.network == "MS-TCN2 late":
-            if args.task == "gestures":
-                path = f"/data/home/ori.meiraz/models/{args.dataset}/08.09.2022 15:37:10  task:{args.task} splits: all net: MS-TCN2 late is Offline: True window dim: 6/split0"
-            elif args.task == "multi-taks":
-                path = f"/data/home/ori.meiraz/models/{args.dataset}/08.09.2022 17:39:32  task:multi-taks splits: all net: MS-TCN2 late is Offline: True window dim: 6/split0"
-        else:
-            if args.task == "gestures":
-                path = "/data/home/ori.meiraz/models/APAS/08.09.2022 18:18:13  task:gestures splits: all net: MS-TCN2 early is Offline: True window dim: 6/split0/"
-
+            else:
+                path = "/data/home/ori.meiraz/models/APAS/16.08.2022 18:04:33  task:gestures splits: all net: MS-TCN2 is Offline: True window dim: 6/split2"
     num_classes_list, _, _ = get_num_classes_list(args)
     if args.network == "MS-TCN2":
         model = MST_TCN2(args.num_layers_PG, args.num_layers_R, args.num_R, args.num_f_maps,
-                         args.features_dim, num_classes_list, dropout=args.dropout_TCN, window_dim=args.window_dim, offline_mode=args.offline_mode)
+                         args.features_dim, num_classes_list, dropout=args.dropout_TCN, window_dim=args.window_dim, offline_mode=True)
         model.load_state_dict(torch.load(
             f"{path}/{args.network}_{args.task}.model"))
+
         model.eval()
         model = model.to(device)
     elif args.network == "MS-TCN2 late":

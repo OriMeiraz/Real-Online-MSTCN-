@@ -11,6 +11,5 @@ batch_input = torch.tensor(batch_input).to(device)
 batch_input = batch_input.reshape(1, *batch_input.shape)
 print(batch_input.shape)
 
-outs = model(batch_input)
-out = torch.cat(outs, 2)[-1]
-print(out[:, :, n-1])
+outs = model.to(device)(batch_input)
+print(outs[2][-1][:, :, 1191])

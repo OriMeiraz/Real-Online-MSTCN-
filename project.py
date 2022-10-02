@@ -1,10 +1,8 @@
 from load_model import load_model, args
-from batch_gen import BatchGenerator
 import torch
-from DataStructures import ModelRecreate, FrameGenerator
-import tqdm
+from DataStructures import ModelRecreate
+from FrameGenrator import FrameGenerator
 import time
-
 from utils.efficientnetV2 import EfficientnetV2
 from accelerate import Accelerator
 from termcolor import colored
@@ -38,7 +36,8 @@ def prepare_models(use_accelerator=True):
     extractor = EfficientnetV2(
         size="m", num_classes=6, pretrained=False)  # load extractor
     extractor.load_state_dict(torch.load(
-        fr"{output}/experiment_20220530/{fold}/2355/model_50.pth"))
+        fr"{output}/experiment_20220530/2/2355/model_50.pth"))
+
     extractor = extractor.eval()
     extractor = extractor.to(device)
     print(colored("loaded feature extraction", 'green'))
@@ -69,11 +68,14 @@ def extraction_examples(extractor, shape: tuple = None, num_examples=30):
         f = torch.randn(1, 3, *shape, device=device)
         sample_input = [f]
         with warnings.catch_warnings():
+            extractor = extractor.to(device)
             warnings.simplefilter("ignore")
             extractor = torch.jit.trace(
                 extractor, sample_input).to(device)
+            print('extracted')
             extractor = torch.jit.freeze(extractor)
-        for _ in range(num_examples):
+        for i in range(num_examples):
+            print(i)
             extractor(f)
         print(colored("end examples of feature extraction", "blue"))
     return extractor
@@ -113,10 +115,11 @@ def main(shape, video_path):
     mean, std = extractor.input_mean, extractor.input_std
     extractor = extraction_examples(extractor, shape=shape)
     with torch.no_grad():
-        return run(video_path, model, extractor, mean, std)
+        return run(video_path, model.to(device), extractor, mean, std)
 
 
 if __name__ == '__main__':
+    torch.backends.cudnn.benchmark = True
     video_path = "/data/shared-data/scalpel/APAS-Activities/data/APAS/frames/P016_balloon2_side"
     outputs = main(shape, video_path)
     print(outputs[n-1])

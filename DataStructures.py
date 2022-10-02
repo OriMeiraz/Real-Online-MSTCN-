@@ -1,30 +1,11 @@
-from PIL import Image
 import torch
 import math
 import torch.nn.functional as F
-from os.path import exists
 from torchvision import transforms
-import time
 from utils.transforms import GroupNormalize, GroupScale, GroupCenterCrop
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-class FrameGenerator:
-    def __init__(self, path: str, size_of_index=5, start='img', end='jpg') -> None:
-        self.t = 1
-        self.path = path
-        self.size_of_index = size_of_index
-        self.end = end
-        self.start = start
-        self.batch_size = 1
-
-    def next(self):
-        temp_path = f'{self.path}/{self.start}_{str(self.t).zfill(self.size_of_index)}.{self.end}'
-        if exists(temp_path):
-            self.t += 1
-            return Image.open(temp_path)
 
 
 def conv_1col(Q, conv) -> torch.Tensor:
@@ -58,12 +39,12 @@ class ModelRecreate:
         self.top = RefinementStage(
             model, w_max, model.num_R-1, frame_gen, extractor, *args)
 
-    def next(self) -> tuple:
+    def next(self) -> list:
         """
         returns the predictions of the next frame 
         """
         outs = self.top.next()
-        return [o.reshape(1, -1).detach() for o in outs]
+        return [o.reshape(-1).detach() for o in outs]
 
 
 class PredictionLayer:
