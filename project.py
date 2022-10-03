@@ -7,7 +7,8 @@ from utils.efficientnetV2 import EfficientnetV2
 from accelerate import Accelerator
 from termcolor import colored
 import warnings
-
+import tqdm
+import math
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 data = "/data/shared-data/scalpel/APAS-Activities/data/"
@@ -68,12 +69,13 @@ def extraction_examples(extractor, shape: tuple = None, num_examples=30):
         f = torch.randn(1, 3, *shape, device=device)
         sample_input = [f]
         with warnings.catch_warnings():
-            extractor = extractor.to(device)
-            warnings.simplefilter("ignore")
-            extractor = torch.jit.trace(
-                extractor, sample_input).to(device)
-            print('extracted')
-            extractor = torch.jit.freeze(extractor)
+            with torch.no_grad():
+                extractor = extractor.to(device)
+                warnings.simplefilter("ignore")
+                extractor = torch.jit.trace(
+                    extractor, sample_input).to(device)
+                print('extracted')
+                extractor = torch.jit.freeze(extractor)
         for i in range(num_examples):
             print(i)
             extractor(f)
@@ -92,21 +94,13 @@ def run(video_path, model, extractor, mean, std):
                            frame_gen, extractor, mean, std)
     print(colored(
         f"finished initializing Model recreate, took {time.time()-t0} seconds", "yellow"))
-    t0 = time.time()
-    t = 0
+    pbar = tqdm.tqdm(total=math.inf)
     while True:
         try:
             outputs.append(mr.next())
-            t += 1
-            if t % 100 == 0:
-                took = time.time() - t0
-                print(
-                    colored(f"{t} iterations in {took} seconds. That is {t/took} fps", "cyan"))
+            pbar.update(1)
 
         except ValueError:
-            took = time.time() - t0
-            print(colored(
-                f"{t} iterations in {took} seconds. That is {t/took} fps", "cyan"))
             return outputs
 
 

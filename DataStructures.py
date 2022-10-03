@@ -1,9 +1,10 @@
+from hmac import trans_5C
 import torch
 import math
 import torch.nn.functional as F
 from torchvision import transforms
 from utils.transforms import GroupNormalize, GroupScale, GroupCenterCrop
-
+import time
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -280,8 +281,10 @@ class PgStage:
         self.future_t += 1
 
         with torch.no_grad():
+            t0 = time.time()
             current_frame = self.val_augmentation([current_frame])
-            frame_tensor = transforms.ToTensor()(current_frame[0]).to(device)
+            frame_tensor = transforms.ToTensor()(current_frame[0])
+            frame_tensor = frame_tensor.to(device)
             frame_tensor = self.normalize(frame_tensor)
             frame_tensor = frame_tensor.view(1, *frame_tensor.size())
             features = self.extractor(frame_tensor)[1]

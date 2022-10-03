@@ -1,5 +1,6 @@
 from os.path import exists
 from PIL import Image
+import time
 
 
 class FrameGenerator:
@@ -12,7 +13,10 @@ class FrameGenerator:
         self.batch_size = 1
 
     def next(self):
+        t0 = time.time()
         temp_path = f'{self.path}/{self.start}_{str(self.t).zfill(self.size_of_index)}.{self.end}'
         if exists(temp_path):
             self.t += 1
-            return Image.open(temp_path)
+            img = Image.open(temp_path)
+            took = time.time() - t0
+            return img
