@@ -2,9 +2,9 @@
 from utils.train_opts_2D import parser
 from utils.resnet2D import resnet18
 from utils.efficientnetV2 import EfficientnetV2
-from utils.dataset import Gesture2dTrainSet, Sequential2DTestGestureDataSet
+from train_dataset import Gesture2DTrainSet, Sequential2DTestGestureDataSet
 from utils.transforms import GroupNormalize, GroupScale, GroupCenterCrop
-from utils.metrics import accuracy, average_F1, edit_score, overlap_f1
+from metrics import accuracy, average_F1, edit_score, overlap_f1
 from utils.util import AverageMeter
 import utils.util
 import os.path
@@ -18,11 +18,75 @@ import tqdm
 import wandb
 import pandas as pd
 import random
+from util import AverageMeter, splits_LOSO, splits_LOUO, splits_LOUO_NP, gestures_SU, gestures_NP, gestures_KT
+from util import gestures_GTEA, splits_GTEA, splits_50salads, gestures_50salads, splits_breakfast, gestures_breakfast
+
 "login code: 7f49a329fde9628512efec583de6188a33d0ed01"
 
-data = "/data/shared-data/scalpel/APAS-Activities/data/"
-gesture_ids = ['G0', 'G1', 'G2', 'G3', 'G4', 'G5']
-folds_folder = os.path.join(data, "APAS", "folds")
+
+def get_splits(dataset, eval_scheme, task):
+    splits = None
+    if dataset == "JIGSAWS":
+        if eval_scheme == 'LOSO':
+            splits = splits_LOSO
+        elif eval_scheme == 'LOUO':
+            if task == "Needle_Passing":
+                splits = splits_LOUO_NP
+            else:
+                splits = splits_LOUO
+    elif dataset == "GTEA":
+        if eval_scheme == "LOUO":
+            splits = splits_GTEA
+    elif dataset == "50SALADS":
+        if eval_scheme == "LOUO":
+            splits = splits_50salads
+    elif dataset == "BREAKFAST":
+        if eval_scheme == "LOUO":
+            splits = splits_breakfast
+
+    return splits
+
+
+def train_val_split(splits, val_split):
+
+    if isinstance(val_split, int):
+        assert (val_split >= 0 and val_split < len(splits))
+        train_lists = splits[0:val_split] + splits[val_split + 1:]
+        val_list = splits[val_split:val_split+1]
+
+        if isinstance(train_lists[0], list):
+            train_lists = [
+                item for train_split in train_lists for item in train_split]
+        if isinstance(val_list[0], list):
+            val_list = [item for val_split in val_list for item in val_split]
+
+    else:
+        assert isinstance(val_split, list)
+        assert all((s in splits) for s in val_split)
+        train_lists = [s for s in splits if s not in val_split]
+        val_list = [s for s in splits if s in val_split]
+
+    return train_lists, val_list
+
+
+def get_gestures(dataset, task=None):
+    if dataset == "JIGSAWS":
+        if task == "Suturing":
+            gesture_ids = gestures_SU
+        elif task == "Needle_Passing":
+            gesture_ids = gestures_NP
+        elif task == "Knot_Tying":
+            gesture_ids = gestures_KT
+    elif dataset == "GTEA":
+        gesture_ids = gestures_GTEA
+    elif dataset == "50SALADS":
+        gesture_ids = gestures_50salads
+    elif dataset == "BREAKFAST":
+        gesture_ids = gestures_breakfast
+    else:
+        raise NotImplementedError()
+
+    return gesture_ids
 
 
 def read_data(folds_folder, split_num):
@@ -93,7 +157,7 @@ def eval(model, val_loaders, device_gpu, device_cpu, num_class, output_folder, g
                 Y = np.append(Y, target.numpy())
                 data = data.to(device_gpu)
                 output = model(data)
-                if model.arch == "EfficientnetV2":
+                if model.arch.startswith("EfficientnetV2"):
                     output = output[0]
 
                 predicted = torch.nn.Softmax(dim=1)(output)
@@ -104,6 +168,7 @@ def eval(model, val_loaders, device_gpu, device_cpu, num_class, output_folder, g
             acc = accuracy(P, Y)
             mean_avg_f1, avg_precision, avg_recall, avg_f1 = average_F1(
                 P, Y, n_classes=num_class)
+
             all_precisions.append(avg_precision)
             all_recalls.append(avg_recall)
             all_f1s.append(avg_f1)
@@ -132,14 +197,14 @@ def eval(model, val_loaders, device_gpu, device_cpu, num_class, output_folder, g
             overall_f1_25.append(f1_25)
             overall_f1_50.append(f1_50)
 
-        gesture_ids_ = gesture_ids.copy() + ["mean"]
-        all_precisions = np.array(all_precisions).mean(0)
-        all_recalls = np.array(all_recalls).mean(0)
-        all_f1s = np.array(all_f1s).mean(0)
+        #gesture_ids_ = gesture_ids.copy() + ["mean"]
+        #all_precisions = np.array(all_precisions).mean(0)
+        #all_recalls = np.array(all_recalls).mean(0)
+        #all_f1s = np.array(all_f1s).mean(0)
 
-        df = pd.DataFrame(list(zip(gesture_ids_, all_precisions, all_recalls, all_f1s)),
-                          columns=['gesture_ids', 'precision', 'recall', 'f1'])
-        log(df, output_folder)
+        # df = pd.DataFrame(list(zip(gesture_ids_, all_precisions, all_recalls, all_f1s)),
+        #                  columns=['gesture_ids', 'precision', 'recall', 'f1'])
+        #log(df, output_folder)
 
         log("Overall: Acc - {:.3f} Avg_F1 - {:.3f} Edit - {:.3f} F1_10 {:.3f} F1_25 {:.3f} F1_50 {:.3f}".format(
             np.mean(overall_acc), np.mean(
@@ -180,11 +245,6 @@ def save_fetures(model, val_loaders, list_of_videos_names, device_gpu, features_
 
 
 def main(split=3, upload=False, save_features=False):
-    data = "/data/shared-data/scalpel/APAS-Activities/data/"
-
-    features_path = os.path.join(
-        data, "APAS", "features", "fold "+str(split))
-
     eval_metric = "F1"
     best_metric = 0
     best_epoch = 0
@@ -201,16 +261,21 @@ def main(split=3, upload=False, save_features=False):
         print("GPU not found - exit")
         return
     args = parser.parse_args()
-    args.data_path = f"{data}APAS/frames"
-    args.epochs = 5
-    args.transcriptions_dir = f"{data}APAS/transcriptions_gestures"
+    if args.dataset == "APAS":
+        APAS_data = "/data/shared-data/scalpel/APAS-Activities/data/"
+        APAS_folds_folder = os.path.join(APAS_data, "APAS", "folds")
+
+        features_path = os.path.join(
+            APAS_data, "APAS", "features", "fold "+str(split))
+
+    gesture_ids = get_gestures(args.dataset, args.task)
     args.eval_batch_size = 2 * args.batch_size
     args.split = split
     if upload:
         wandb.init(project="New_test_proj")
         wandb.config.update(args)
 
-    device_gpu = torch.device("cuda")
+    device_gpu = torch.device(f"cuda:{args.gpu_id}")
     device_cpu = torch.device("cpu")
 
     checkpoint = None
@@ -250,13 +315,16 @@ def main(split=3, upload=False, save_features=False):
         torch.set_rng_state(checkpoint['rng'])
 
     # ===== prepare model =====
+    arch = args.arch
 
-    if args.arch == "EfficientnetV2":
+    num_classes = len(gesture_ids)
+
+    if args.arch in ["2D-EfficientNetV2-s", "2D-EfficientNetV2-m", "2D-EfficientNetV2-l"]:
+        size = args.arch[-1]
         model = EfficientnetV2(
-            size="s", num_classes=args.num_classes, pretrained=True)
+            size=size, num_classes=num_classes, pretrained=True)
     else:
-        model = resnet18(pretrained=True, progress=True,
-                         num_classes=args.num_classes)
+        raise NotImplementedError(f'wrong arch :{args.arch}')
 
     if checkpoint:
         # load model weights
@@ -285,15 +353,25 @@ def main(split=3, upload=False, save_features=False):
         scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer, step_size=50, gamma=0.2, last_epoch=last_epoch)
 
-    list_of_train_examples, list_of_valid_examples, list_of_test_examples = read_data(
-        folds_folder, split)
+    if args.dataset == "APAS":
+        list_of_train_examples, list_of_valid_examples, list_of_test_examples = read_data(
+            APAS_folds_folder, split)
     normalize = GroupNormalize(model.input_mean, model.input_std)
     train_augmentation = model.get_augmentation(crop_corners=args.corner_cropping,
                                                 do_horizontal_flip=args.do_horizontal_flip)
+    splits = get_splits(args.dataset, args.eval_scheme, args.task)
 
-    train_set = Gesture2dTrainSet(list_of_train_examples, args.data_path, args.transcriptions_dir, gesture_ids,
-                                  image_tmpl=args.image_tmpl, samoling_factor=args.video_sampling_step, video_suffix=args.video_suffix,
-                                  transform=train_augmentation, normalize=normalize, epoch_size=args.epoch_size, debag=False)
+    train_lists, val_list = train_val_split(splits, args.split)
+
+    lists_dir = os.path.join(args.video_lists_dir, args.eval_scheme)
+    train_lists = list(map(lambda x: os.path.join(lists_dir, x), train_lists))
+    val_lists = list(map(lambda x: os.path.join(lists_dir, x), val_list))
+
+    if args.dataset in ['50SALADS', 'BREAKFAST', 'GTEA']:
+        train_set = Gesture2DTrainSet(args.data_path, train_lists, args.transcriptions_dir, gesture_ids,
+                                      image_tmpl=args.image_tmpl, video_suffix=args.video_suffix,
+                                      transform=train_augmentation, normalize=normalize, debag=False,
+                                      number_of_samples_per_class=args.number_of_samples_per_class, preload=args.preload)
 
     def init_train_loader_worker(worker_id):
         np.random.seed(int((torch.initial_seed() + worker_id) %
@@ -306,12 +384,16 @@ def main(split=3, upload=False, save_features=False):
     test_loaders = []
     val_loaders = []
 
+    val_videos = list()
+    for list_file in val_lists:
+        val_videos.extend(
+            [(x.strip().split(',')[0], x.strip().split(',')[1]) for x in open(list_file)])
+
     val_augmentation = torchvision.transforms.Compose([GroupScale(int(256)),
                                                        GroupCenterCrop(args.input_size)])  # need to be corrected
 
-    for video in list_of_valid_examples:
-
-        data_set = Sequential2DTestGestureDataSet(root_path=args.data_path, video_id=video, transcriptions_dir=args.transcriptions_dir, gesture_ids=gesture_ids,
+    for video in val_videos:
+        data_set = Sequential2DTestGestureDataSet(root_path=args.data_path, video_id=video[0], frame_count=video[1], transcriptions_dir=args.transcriptions_dir, gesture_ids=gesture_ids,
                                                   snippet_length=1,
                                                   sampling_step=6,
                                                   image_tmpl=args.image_tmpl,
@@ -320,19 +402,19 @@ def main(split=3, upload=False, save_features=False):
                                                   transform=val_augmentation)  # augmentation are off
         val_loaders.append(torch.utils.data.DataLoader(data_set, batch_size=args.eval_batch_size,
                                                        shuffle=False, num_workers=args.workers))
-
-    for video in list_of_test_examples:
-        data_set = Sequential2DTestGestureDataSet(root_path=args.data_path, video_id=video,
-                                                  transcriptions_dir=args.transcriptions_dir,
-                                                  gesture_ids=gesture_ids,
-                                                  snippet_length=1,
-                                                  sampling_step=6,
-                                                  image_tmpl=args.image_tmpl,
-                                                  video_suffix=args.video_suffix,
-                                                  normalize=normalize,
-                                                  transform=val_augmentation)  # augmentation are off
-        test_loaders.append(torch.utils.data.DataLoader(data_set, batch_size=args.eval_batch_size,
-                                                        shuffle=False, num_workers=args.workers))
+    if args.dataset == "APAS":
+        for video in list_of_test_examples:
+            data_set = Sequential2DTestGestureDataSet(root_path=args.data_path, video_id=video,
+                                                      transcriptions_dir=args.transcriptions_dir,
+                                                      gesture_ids=gesture_ids,
+                                                      snippet_length=1,
+                                                      sampling_step=6,
+                                                      image_tmpl=args.image_tmpl,
+                                                      video_suffix=args.video_suffix,
+                                                      normalize=normalize,
+                                                      transform=val_augmentation)  # augmentation are off
+            test_loaders.append(torch.utils.data.DataLoader(data_set, batch_size=args.eval_batch_size,
+                                                            shuffle=False, num_workers=args.workers))
 
     # ===== train model =====
 
@@ -362,7 +444,7 @@ def main(split=3, upload=False, save_features=False):
                 # target = target.to(device_gpu, dtype=torch.int64)
                 output = model(data)
                 # target = target.to(dtype=torch.float)
-                if args.arch == "EfficientnetV2":
+                if args.arch.startswith("2D-EfficientNetV2"):
                     features = output[1]
                     output = output[0]
 
@@ -397,7 +479,7 @@ def main(split=3, upload=False, save_features=False):
             log("Start evaluation...", output_folder)
 
             acc, f1, valid_per_video = eval(
-                model, val_loaders, device_gpu, device_cpu, args.num_classes, output_folder, gesture_ids)
+                model, val_loaders, device_gpu, device_cpu, num_classes, output_folder, gesture_ids)
             all_eval_results.append([split, epoch, acc, f1])
             full_eval_results = pd.DataFrame(all_eval_results, columns=[
                                              'split num', 'epoch', 'acc', 'f1'])
@@ -427,7 +509,7 @@ def main(split=3, upload=False, save_features=False):
     log("testing based on epoch " + str(best_epoch),
         output_folder)  # based on epoch XX model
     acc_test, f1_test, test_per_video = eval(
-        model, test_loaders, device_gpu, device_cpu, args.num_classes, output_folder, gesture_ids)
+        model, test_loaders, device_gpu, device_cpu, num_classes, output_folder, gesture_ids)
     full_test_results = pd.DataFrame(test_per_video, columns=[
                                      'video name', 'acc', 'f1'])
     full_test_results["epoch"] = best_epoch
@@ -462,8 +544,8 @@ def main(split=3, upload=False, save_features=False):
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
-    main(split=0, save_features=True)
-    main(split=1, save_features=True)
-    main(split=2, save_features=True)
-    main(split=3, save_features=True)
-    main(split=4, save_features=True)
+    main(split=0, save_features=False)
+    main(split=1, save_features=False)
+    main(split=2, save_features=False)
+    main(split=3, save_features=False)
+    main(split=4, save_features=False)
