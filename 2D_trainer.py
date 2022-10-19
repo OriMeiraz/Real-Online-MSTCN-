@@ -4,9 +4,10 @@ from utils.resnet2D import resnet18
 from utils.efficientnetV2 import EfficientnetV2
 from train_dataset import Gesture2DTrainSet, Sequential2DTestGestureDataSet
 from utils.transforms import GroupNormalize, GroupScale, GroupCenterCrop
-from metrics import accuracy, average_F1, edit_score, overlap_f1
+from utils.metrics import accuracy, average_F1, edit_score, overlap_f1
 from utils.util import AverageMeter
 import utils.util
+import os
 import os.path
 import datetime
 import numpy as np
@@ -20,6 +21,7 @@ import pandas as pd
 import random
 from util import AverageMeter, splits_LOSO, splits_LOUO, splits_LOUO_NP, gestures_SU, gestures_NP, gestures_KT
 from util import gestures_GTEA, splits_GTEA, splits_50salads, gestures_50salads, splits_breakfast, gestures_breakfast
+
 
 "login code: 7f49a329fde9628512efec583de6188a33d0ed01"
 
@@ -84,7 +86,8 @@ def get_gestures(dataset, task=None):
     elif dataset == "BREAKFAST":
         gesture_ids = gestures_breakfast
     else:
-        raise NotImplementedError()
+        gesture_ids = gestures_breakfast  # delete later
+        #raise NotImplementedError("not a dataset")
 
     return gesture_ids
 
@@ -136,6 +139,9 @@ def log(msg, output_folder):
 
 
 def eval(model, val_loaders, device_gpu, device_cpu, num_class, output_folder, gesture_ids, upload=False):
+    if val_loaders == []:
+        log('In this dataset, the test is the evaluation', output_folder)
+        return None, None, None
     results_per_vedo = []
     all_precisions = []
     all_recalls = []
@@ -197,14 +203,14 @@ def eval(model, val_loaders, device_gpu, device_cpu, num_class, output_folder, g
             overall_f1_25.append(f1_25)
             overall_f1_50.append(f1_50)
 
-        #gesture_ids_ = gesture_ids.copy() + ["mean"]
-        #all_precisions = np.array(all_precisions).mean(0)
-        #all_recalls = np.array(all_recalls).mean(0)
-        #all_f1s = np.array(all_f1s).mean(0)
+        gesture_ids_ = gesture_ids.copy() + ["mean"]
+        all_precisions = np.nanmean(np.array(all_precisions).astype(float), 0)
+        all_recalls = np.nanmean(np.array(all_recalls).astype(float), 0)
+        all_f1s = np.nanmean(np.array(all_f1s).astype(float), 0)
 
-        # df = pd.DataFrame(list(zip(gesture_ids_, all_precisions, all_recalls, all_f1s)),
-        #                  columns=['gesture_ids', 'precision', 'recall', 'f1'])
-        #log(df, output_folder)
+        df = pd.DataFrame(list(zip(gesture_ids_, all_precisions, all_recalls, all_f1s)),
+                          columns=['gesture_ids', 'precision', 'recall', 'f1'])
+        log(df, output_folder)
 
         log("Overall: Acc - {:.3f} Avg_F1 - {:.3f} Edit - {:.3f} F1_10 {:.3f} F1_25 {:.3f} F1_50 {:.3f}".format(
             np.mean(overall_acc), np.mean(
@@ -240,6 +246,8 @@ def save_fetures(model, val_loaders, list_of_videos_names, device_gpu, features_
                 video_features.append(features)
             print(len(video_features))
             embedding = np.concatenate(video_features, axis=0).transpose()
+            if not os.path.exists(features_path):
+                os.makedirs(features_path)
             np.save(file_path, embedding)
             video_features = []
 
@@ -265,8 +273,8 @@ def main(split=3, upload=False, save_features=False):
         APAS_data = "/data/shared-data/scalpel/APAS-Activities/data/"
         APAS_folds_folder = os.path.join(APAS_data, "APAS", "folds")
 
-        features_path = os.path.join(
-            APAS_data, "APAS", "features", "fold "+str(split))
+    features_path = os.path.join(
+        args.out, "features", args.dataset, "fold "+str(split))
 
     gesture_ids = get_gestures(args.dataset, args.task)
     args.eval_batch_size = 2 * args.batch_size
@@ -367,7 +375,7 @@ def main(split=3, upload=False, save_features=False):
     train_lists = list(map(lambda x: os.path.join(lists_dir, x), train_lists))
     val_lists = list(map(lambda x: os.path.join(lists_dir, x), val_list))
 
-    if args.dataset in ['50SALADS', 'BREAKFAST', 'GTEA']:
+    if args.dataset in ['APAS', '50SALADS', 'BREAKFAST', 'GTEA']:
         train_set = Gesture2DTrainSet(args.data_path, train_lists, args.transcriptions_dir, gesture_ids,
                                       image_tmpl=args.image_tmpl, video_suffix=args.video_suffix,
                                       transform=train_augmentation, normalize=normalize, debag=False,
@@ -510,23 +518,29 @@ def main(split=3, upload=False, save_features=False):
         output_folder)  # based on epoch XX model
     acc_test, f1_test, test_per_video = eval(
         model, test_loaders, device_gpu, device_cpu, num_classes, output_folder, gesture_ids)
-    full_test_results = pd.DataFrame(test_per_video, columns=[
-                                     'video name', 'acc', 'f1'])
-    full_test_results["epoch"] = best_epoch
-    full_test_results["split"] = split
-    full_test_results.to_csv(output_folder + "/" +
-                             "test_results.csv", index=False)
+
+    if test_per_video is not None:
+        full_test_results = pd.DataFrame(test_per_video, columns=[
+            'video name', 'acc', 'f1'])
+        full_test_results["epoch"] = best_epoch
+        full_test_results["split"] = split
+        full_test_results.to_csv(output_folder + "/" +
+                                 "test_results.csv", index=False)
+
+    model_file = os.path.join(
+        output_folder, f"final_model_epoch{args.epochs}" + ".pth")
+    torch.save(model.state_dict(), model_file)
+    log(f"Saved the last model for epoch {epoch}...", output_folder)
 
     if save_features is True:
         log("Start  features saving...", output_folder)
 
     # extract Features
         all_loaders = []
-        all_videos = list_of_train_examples + \
-            list_of_valid_examples + list_of_test_examples
+        all_videos = val_videos
 
         for video in all_videos:
-            data_set = Sequential2DTestGestureDataSet(root_path=args.data_path, video_id=video,
+            data_set = Sequential2DTestGestureDataSet(root_path=args.data_path, video_id=video[0], frame_count=video[1],
                                                       transcriptions_dir=args.transcriptions_dir,
                                                       gesture_ids=gesture_ids,
                                                       snippet_length=1,
@@ -535,7 +549,7 @@ def main(split=3, upload=False, save_features=False):
                                                       video_suffix=args.video_suffix,
                                                       normalize=normalize,
                                                       transform=val_augmentation)  # augmentation are off
-            all_loaders.append(torch.utils.data.DataLoader(data_set, batch_size=1,
+            all_loaders.append(torch.utils.data.DataLoader(data_set, batch_size=args.eval_batch_size,
                                                            shuffle=False, num_workers=args.workers))
 
         save_fetures(model, all_loaders, all_videos, device_gpu, features_path)
@@ -544,8 +558,8 @@ def main(split=3, upload=False, save_features=False):
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
-    main(split=0, save_features=False)
+    main(split=0, save_features=True)
     main(split=1, save_features=False)
     main(split=2, save_features=False)
     main(split=3, save_features=False)
-    main(split=4, save_features=False)
+    #main(split=4, save_features=False)
