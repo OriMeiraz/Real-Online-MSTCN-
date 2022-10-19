@@ -1,10 +1,10 @@
+from sys import prefix
 from load_model import load_model, args
 import torch
 from DataStructures import ModelRecreate
 from FrameGenrator import FrameGenerator
 import time
 from utils.efficientnetV2 import EfficientnetV2
-from accelerate import Accelerator
 from termcolor import colored
 import warnings
 import tqdm
@@ -43,6 +43,7 @@ def prepare_models(use_accelerator=True):
     extractor = extractor.to(device)
     print(colored("loaded feature extraction", 'green'))
     if use_accelerator:
+        from accelerate import Accelerator
         accelerator = Accelerator()
         extractor, model = accelerator.prepare(extractor, model)
         print(colored("prepared extraction and model with accelerator", 'green'))
@@ -94,18 +95,21 @@ def run(video_path, model, extractor, mean, std):
                            frame_gen, extractor, mean, std)
     print(colored(
         f"finished initializing Model recreate, took {time.time()-t0} seconds", "yellow"))
-    pbar = tqdm.tqdm(total=math.inf)
+    pbar = tqdm.tqdm(total=math.inf, unit=' frames',
+                     bar_format='Calculated {n} frames. current rate: {rate_fmt}')
     while True:
         try:
             outputs.append(mr.next())
             pbar.update(1)
 
         except ValueError:
+            pbar.bar_format = 'Total number of {n} frames. Calculated at avg of {rate_fmt} '
+            pbar.close()
             return outputs
 
 
 def main(shape, video_path):
-    model, extractor = prepare_models()
+    model, extractor = prepare_models(use_accelerator=False)
     mean, std = extractor.input_mean, extractor.input_std
     extractor = extraction_examples(extractor, shape=shape)
     with torch.no_grad():
@@ -116,4 +120,3 @@ if __name__ == '__main__':
     torch.backends.cudnn.benchmark = True
     video_path = "/data/shared-data/scalpel/APAS-Activities/data/APAS/frames/P016_balloon2_side"
     outputs = main(shape, video_path)
-    print(outputs[n-1])

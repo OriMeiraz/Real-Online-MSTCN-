@@ -1,0 +1,15 @@
+command-not-found==0.3
+distro-info===0.18ubuntu0.18.04.1
+language-selector==0.1
+PAM==0.4.2
+pygobject==3.26.1 
+python-apt==1.6.5+ubuntu0.4
+screen-resolution-extra==0.0.0 
+ssh-import-id==5.7 
+systemd-python==234 
+torch-cluster==1.4.5
+ubuntu-drivers-common==0.0.0
+ufw==0.36
+unattended-upgrades==0.1
+xkit==0.0.0
+zope.interface==4.3.2

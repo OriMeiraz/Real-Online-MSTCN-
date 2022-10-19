@@ -487,7 +487,7 @@ def main(split=3, upload=False, save_features=False):
             log("Start evaluation...", output_folder)
 
             acc, f1, valid_per_video = eval(
-                model, val_loaders, device_gpu, device_cpu, num_classes, output_folder, gesture_ids)
+                model, val_loaders, device_gpu, device_cpu, num_classes, output_folder, gesture_ids, upload=True)
             all_eval_results.append([split, epoch, acc, f1])
             full_eval_results = pd.DataFrame(all_eval_results, columns=[
                                              'split num', 'epoch', 'acc', 'f1'])
@@ -517,7 +517,7 @@ def main(split=3, upload=False, save_features=False):
     log("testing based on epoch " + str(best_epoch),
         output_folder)  # based on epoch XX model
     acc_test, f1_test, test_per_video = eval(
-        model, test_loaders, device_gpu, device_cpu, num_classes, output_folder, gesture_ids)
+        model, test_loaders, device_gpu, device_cpu, num_classes, output_folder, gesture_ids, upload=True)
 
     if test_per_video is not None:
         full_test_results = pd.DataFrame(test_per_video, columns=[
