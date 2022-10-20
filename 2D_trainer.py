@@ -86,8 +86,7 @@ def get_gestures(dataset, task=None):
     elif dataset == "BREAKFAST":
         gesture_ids = gestures_breakfast
     else:
-        gesture_ids = gestures_breakfast  # delete later
-        #raise NotImplementedError("not a dataset")
+        raise NotImplementedError("Not a dataset")
 
     return gesture_ids
 
@@ -129,8 +128,6 @@ def read_data(folds_folder, split_num):
     random.shuffle(list_of_train_examples)
     return list_of_train_examples, list_of_valid_examples, list_of_test_examples
 
-
-# wandb.init(name="my awesome run")
 
 def log(msg, output_folder):
     f_log = open(os.path.join(output_folder, "log.txt"), 'a')
@@ -252,7 +249,7 @@ def save_fetures(model, val_loaders, list_of_videos_names, device_gpu, features_
             video_features = []
 
 
-def main(split=3, upload=False, save_features=False):
+def main(split=3, upload=False, save_features=False, group=None):
     eval_metric = "F1"
     best_metric = 0
     best_epoch = 0
@@ -280,8 +277,15 @@ def main(split=3, upload=False, save_features=False):
     args.eval_batch_size = 2 * args.batch_size
     args.split = split
     if upload:
-        wandb.init(project="New_test_proj")
-        wandb.config.update(args)
+        if group is None:
+            group = args.exp
+        elif len([t for t in string.Formatter().parse(group)]) == 3:
+            group = group.format(args.arch, args.dataset, args.weight_decay)
+        elif len([t for t in string.Formatter().parse(group)]) == 2:
+            group = group.format(args.arch, args.dataset)
+
+        wandb.init(project=args.project_name, config=vars(args), group=group,
+                   name=f"{args.arch}_{split}", reinit=True)
 
     device_gpu = torch.device(f"cuda:{args.gpu_id}")
     device_cpu = torch.device("cpu")
@@ -556,10 +560,10 @@ def main(split=3, upload=False, save_features=False):
 
 
 if __name__ == '__main__':
-    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-
-    main(split=0, save_features=True)
-    main(split=1, save_features=False)
-    main(split=2, save_features=False)
-    main(split=3, save_features=False)
-    #main(split=4, save_features=False)
+    split = 0
+    try:
+        while True:
+            main(split=split, save_features=False, upload=True)
+            split += 1
+    except AssertionError:
+        print('End of run')
