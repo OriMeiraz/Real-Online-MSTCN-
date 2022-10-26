@@ -281,9 +281,8 @@ class PgStage:
         self.future_t += 1
 
         with torch.no_grad():
-            t0 = time.time()
-            current_frame = self.val_augmentation([current_frame])
-            frame_tensor = transforms.ToTensor()(current_frame[0])
+            frame_tensor = self.val_augmentation([current_frame])
+            frame_tensor = transforms.ToTensor()(frame_tensor[0])
             frame_tensor = frame_tensor.to(device)
             frame_tensor = self.normalize(frame_tensor)
             frame_tensor = frame_tensor.view(1, *frame_tensor.size())

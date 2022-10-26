@@ -34,7 +34,7 @@ from transforms import GroupMultiScaleCrop, GroupRandomHorizontalFlip, GroupRand
 from vae_decoder import VAEDecoder
 from train_dataset import Gesture2DTrainSet, Sequential2DTestGestureDataSet
 from transforms import BaseGroup, GroupColorJitter, GroupNormalize, GroupRandomVerticalFlip, GroupScale, GroupCenterCrop
-from metrics import accuracy, average_F1, edit_score, overlap_f1
+from utils.metrics import accuracy, average_F1, edit_score, overlap_f1
 from util import AverageMeter, splits_LOSO, splits_LOUO, splits_LOUO_NP, gestures_SU, gestures_NP, gestures_KT
 from util import gestures_GTEA, splits_GTEA, splits_50salads, gestures_50salads, splits_breakfast, gestures_breakfast
 # "login code: 7f49a329fde9628512efec583de6188a33d0ed01"
@@ -43,7 +43,7 @@ from util import gestures_GTEA, splits_GTEA, splits_50salads, gestures_50salads,
 
 INPUT_MEAN = [0.485, 0.456, 0.406]
 INPUT_STD = [0.229, 0.224, 0.225]
-ACC_TRESHOLDS = []  # [85, 92, 96, 98, 99, 99.5, 99.9]
+ACC_TRESHOLDS: List[int] = []  # [85, 92, 96, 98, 99, 99.5, 99.9]
 
 
 def log(msg, output_folder):
@@ -315,11 +315,16 @@ def main(trial, split=1, upload=False, group=None, args=None):
                                   transform=train_augmentation, normalize=normalize, debag=False,
                                   number_of_samples_per_class=args.number_of_samples_per_class, preload=args.preload)
 
+    def no_none_collate(batch):
+        batch = list(filter(lambda x: x is not None, batch))
+        return torch.utils.data.dataloader.default_collate(batch)
+
     def init_train_loader_worker(worker_id):
         np.random.seed(int((torch.initial_seed() + worker_id) %
                        (2**32)))  # account for randomness
+
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=args.batch_size, shuffle=True,
-                                               num_workers=args.workers, worker_init_fn=init_train_loader_worker)
+                                               num_workers=args.workers, worker_init_fn=init_train_loader_worker, collate_fn=no_none_collate)
     log("Training set: will sample {} gesture snippets per pass".format(
         train_loader.dataset.__len__()), output_folder)
 
@@ -344,7 +349,7 @@ def main(trial, split=1, upload=False, group=None, args=None):
                                                   normalize=normalize,
                                                   transform=val_augmentation)  # augmentation are off
         val_loaders.append(torch.utils.data.DataLoader(data_set, batch_size=args.eval_batch_size,
-                                                       shuffle=False, num_workers=args.workers))
+                                                       shuffle=False, num_workers=args.workers, collate_fn=no_none_collate))
 
     log("Validation set: ", output_folder)
     for val_loader in val_loaders:

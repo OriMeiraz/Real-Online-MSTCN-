@@ -1,4 +1,3 @@
-from sys import prefix
 from load_model import load_model, args
 import torch
 from DataStructures import ModelRecreate
@@ -15,7 +14,6 @@ data = "/data/shared-data/scalpel/APAS-Activities/data/"
 
 
 output = r"/data/shared-data/scalpel/APAS-Activities/output/"
-check = "P016_balloon1"
 fold = 2
 shape = (224, 224)
 n = 3910
@@ -23,10 +21,8 @@ n = 3910
 
 def prepare_models(use_accelerator=True):
     """loads the MSTCN++ model and the EfficientNetV2 feature extraction
-
     Args:
         use_accelerator (bool, optional): whether to use the accelerator of "huggingface". Defaults to True.
-
     Returns:
         MSTCN++: the MSTCN++ model
         EfficientNetV2: The feature extraction
@@ -37,7 +33,7 @@ def prepare_models(use_accelerator=True):
     extractor = EfficientnetV2(
         size="m", num_classes=6, pretrained=False)  # load extractor
     extractor.load_state_dict(torch.load(
-        fr"{output}/experiment_20220530/2/2355/model_50.pth"))
+        fr"{output}experiment_20220530/2/2355/model_50.pth"))
 
     extractor = extractor.eval()
     extractor = extractor.to(device)
@@ -56,12 +52,10 @@ def extraction_examples(extractor, shape: tuple = None, num_examples=30):
     preforms 'num_examples' iterations of passing a random input of shape 'shape'
     to it to make it faster. 
     Can only do it with a pre-defined shape (the shape of each frame) 
-
     Args:
         extractor (EfficientNetV2): The extractor
         shape (tuple, optional): Defaults to None.
         num_examples (int, optional): number of iterations as described . Defaults to 30.
-
     Returns:
         onednn model: as described
     """
@@ -120,3 +114,4 @@ if __name__ == '__main__':
     torch.backends.cudnn.benchmark = True
     video_path = "/data/shared-data/scalpel/APAS-Activities/data/APAS/frames/P016_balloon2_side"
     outputs = main(shape, video_path)
+    print(outputs)

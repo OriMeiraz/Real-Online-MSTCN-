@@ -461,7 +461,7 @@ if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
     main(split=0, save_features=True)
-    main(split=1, save_features=True)
-    main(split=2, save_features=True)
-    main(split=3, save_features=True)
-    main(split=4, save_features=True)
+    #main(split=1, save_features=True)
+    #main(split=2, save_features=True)
+    #main(split=3, save_features=True)
+    #main(split=4, save_features=True)
