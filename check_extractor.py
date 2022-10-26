@@ -2,9 +2,8 @@ import project
 import numpy as np
 import torch
 from FrameGenrator import FrameGenerator
-from transforms import GroupNormalize, GroupScale, GroupCenterCrop
+from utils.transforms import GroupNormalize, GroupScale, GroupCenterCrop
 from torchvision import transforms
-import torchvision
 
 device = torch.device('cuda')
 video_path = "/data/shared-data/scalpel/APAS-Activities/data/APAS/frames/P016_balloon1_side"
@@ -30,4 +29,6 @@ frame_tensor = frame_tensor.to(device)
 frame_tensor = normalize(frame_tensor)
 frame_tensor = frame_tensor.view(1, *frame_tensor.size())
 features = extractor(frame_tensor)[1]
+print(f'pred features: \n{features}')
+print(f'real features (saved as .npy): \n{batch_input[:, :, 0]}')
 print(torch.norm(features - batch_input[:, :, 0]))

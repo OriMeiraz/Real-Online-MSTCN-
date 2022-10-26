@@ -1,24 +1,22 @@
-from hmac import trans_5C
+from PIL import Image
 import torch
 import math
 import torch.nn.functional as F
+from os.path import exists
 from torchvision import transforms
-from utils.transforms import GroupNormalize, GroupScale, GroupCenterCrop
 import time
+from utils.transforms import GroupNormalize, GroupScale, GroupCenterCrop
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def conv_1col(Q, conv) -> torch.Tensor:
     """perform the convolution if the output is one column
-
     Args:
         Q (torch.Tensor): The tensor of to perform the convolution on
         conv (torch.nn.modules.conv.Conv1d): the convolution to perform.
-
     Raises:
         Value error: if the output of the convolution isn't one column 
-
     Returns:
         torch.Tensor: the output, needs to be one columns. meaning shape (batch_size, conv.out_channels, 1) or if conv.kernel !=3
     """
@@ -45,7 +43,7 @@ class ModelRecreate:
         returns the predictions of the next frame 
         """
         outs = self.top.next()
-        return [o.reshape(-1).detach() for o in outs]
+        return [o.reshape(1, -1).detach() for o in outs]
 
 
 class PredictionLayer:
@@ -96,7 +94,6 @@ class PredictionLayer:
         gets the left padding in the initilization
         Args:
             dilation (int): the dilation of the convolotion it is used in 
-
         Returns:
             torch.Tensor: a tensor of zeros in the correct size
         """
@@ -157,11 +154,9 @@ class PredictionLayer:
         """
         adds the left padding to Q so if Q is smaller then 'size', 
         the size of the output will be length
-
         Args:
             Q (torch.Tensor): the tensor to add the left padding
             length (int): the size of the output 
-
         Returns:
             torch.Tensor: (padding of zeros, Q)
         """
@@ -229,7 +224,6 @@ class PredictionLayer:
     def next(self) -> torch.Tensor:
         """
         updates the layer and return the next vector
-
         Returns:
             torch.Tensor: the features of the next time
         """
@@ -281,9 +275,8 @@ class PgStage:
         self.future_t += 1
 
         with torch.no_grad():
-            frame_tensor = self.val_augmentation([current_frame])
-            frame_tensor = transforms.ToTensor()(frame_tensor[0])
-            frame_tensor = frame_tensor.to(device)
+            current_frame = self.val_augmentation([current_frame])
+            frame_tensor = transforms.ToTensor()(current_frame[0]).to(device)
             frame_tensor = self.normalize(frame_tensor)
             frame_tensor = frame_tensor.view(1, *frame_tensor.size())
             features = self.extractor(frame_tensor)[1]
@@ -458,7 +451,6 @@ class RefinementLayer:
     def convolve(self) -> torch.Tensor:
         """
         does the convolution based on the queue **WITH** the residual
-
         Returns:
             torch.tensor: the convolution output
         """
@@ -499,7 +491,6 @@ class RefinementLayer:
     def next(self) -> torch.Tensor:
         """
         updates the layer and return the next vector
-
         Returns:
             torch.Tensor: the features of the next time
         """
