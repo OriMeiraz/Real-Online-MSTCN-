@@ -21,9 +21,37 @@ import pandas as pd
 import random
 from util import AverageMeter, splits_LOSO, splits_LOUO, splits_LOUO_NP, gestures_SU, gestures_NP, gestures_KT
 from util import gestures_GTEA, splits_GTEA, splits_50salads, gestures_50salads, splits_breakfast, gestures_breakfast
+from sklearn.model_selection import KFold
 
 
 "login code: 7f49a329fde9628512efec583de6188a33d0ed01"
+
+
+def get_k_folds_splits(k=5, shuffle=True, args=None):
+
+    if not args:
+        args = parser.parse_args()
+
+    if args.dataset == "JIGSAWS":
+        users = splits_LOUO
+    elif args.dataset == "GTEA":
+        users = splits_GTEA
+    elif args.dataset == "50SALADS":
+        users = splits_50salads
+
+    if shuffle:
+        kfolds = KFold(n_splits=k, shuffle=shuffle, random_state=args.seed)
+    else:
+        kfolds = KFold(n_splits=k, shuffle=shuffle)
+
+    for train, test in kfolds.split(users):
+        split = [users[i] for i in test]
+        yield split
+
+
+def no_none_collate(batch):
+    batch = list(filter(lambda x: x is not None, batch))
+    return torch.utils.data.dataloader.default_collate(batch)
 
 
 def get_splits(dataset, eval_scheme, task):
@@ -42,6 +70,7 @@ def get_splits(dataset, eval_scheme, task):
     elif dataset == "50SALADS":
         if eval_scheme == "LOUO":
             splits = splits_50salads
+            splits = list(get_k_folds_splits(k=5, shuffle=False))
     elif dataset == "BREAKFAST":
         if eval_scheme == "LOUO":
             splits = splits_breakfast
@@ -372,7 +401,6 @@ def main(split=3, upload=False, save_features=False, group=None):
     train_augmentation = model.get_augmentation(crop_corners=args.corner_cropping,
                                                 do_horizontal_flip=args.do_horizontal_flip)
     splits = get_splits(args.dataset, args.eval_scheme, args.task)
-
     train_lists, val_list = train_val_split(splits, args.split)
 
     lists_dir = os.path.join(args.video_lists_dir, args.eval_scheme)
@@ -389,7 +417,7 @@ def main(split=3, upload=False, save_features=False, group=None):
         np.random.seed(int((torch.initial_seed() + worker_id) %
                        (2**32)))  # account for randomness
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=args.batch_size, shuffle=True,
-                                               num_workers=args.workers, worker_init_fn=init_train_loader_worker)
+                                               num_workers=args.workers, worker_init_fn=init_train_loader_worker, collate_fn=no_none_collate)
     log("Training set: will sample {} gesture snippets per pass".format(
         train_loader.dataset.__len__()), output_folder)
 
@@ -413,7 +441,7 @@ def main(split=3, upload=False, save_features=False, group=None):
                                                   normalize=normalize,
                                                   transform=val_augmentation)  # augmentation are off
         val_loaders.append(torch.utils.data.DataLoader(data_set, batch_size=args.eval_batch_size,
-                                                       shuffle=False, num_workers=args.workers))
+                                                       shuffle=False, num_workers=args.workers, collate_fn=no_none_collate))
     if args.dataset == "APAS":
         for video in list_of_test_examples:
             data_set = Sequential2DTestGestureDataSet(root_path=args.data_path, video_id=video,
@@ -426,7 +454,7 @@ def main(split=3, upload=False, save_features=False, group=None):
                                                       normalize=normalize,
                                                       transform=val_augmentation)  # augmentation are off
             test_loaders.append(torch.utils.data.DataLoader(data_set, batch_size=args.eval_batch_size,
-                                                            shuffle=False, num_workers=args.workers))
+                                                            shuffle=False, num_workers=args.workers, collate_fn=no_none_collate))
 
     # ===== train model =====
 
@@ -491,7 +519,7 @@ def main(split=3, upload=False, save_features=False, group=None):
             log("Start evaluation...", output_folder)
 
             acc, f1, valid_per_video = eval(
-                model, val_loaders, device_gpu, device_cpu, num_classes, output_folder, gesture_ids, upload=True)
+                model, val_loaders, device_gpu, device_cpu, num_classes, output_folder, gesture_ids, upload=upload)
             all_eval_results.append([split, epoch, acc, f1])
             full_eval_results = pd.DataFrame(all_eval_results, columns=[
                                              'split num', 'epoch', 'acc', 'f1'])
@@ -521,7 +549,7 @@ def main(split=3, upload=False, save_features=False, group=None):
     log("testing based on epoch " + str(best_epoch),
         output_folder)  # based on epoch XX model
     acc_test, f1_test, test_per_video = eval(
-        model, test_loaders, device_gpu, device_cpu, num_classes, output_folder, gesture_ids, upload=True)
+        model, test_loaders, device_gpu, device_cpu, num_classes, output_folder, gesture_ids, upload=upload)
 
     if test_per_video is not None:
         full_test_results = pd.DataFrame(test_per_video, columns=[
@@ -554,7 +582,7 @@ def main(split=3, upload=False, save_features=False, group=None):
                                                       normalize=normalize,
                                                       transform=val_augmentation)  # augmentation are off
             all_loaders.append(torch.utils.data.DataLoader(data_set, batch_size=args.eval_batch_size,
-                                                           shuffle=False, num_workers=args.workers))
+                                                           shuffle=False, num_workers=args.workers, collate_fn=no_none_collate))
 
         save_fetures(model, all_loaders, all_videos, device_gpu, features_path)
 
