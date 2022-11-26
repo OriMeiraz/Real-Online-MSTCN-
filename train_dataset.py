@@ -298,7 +298,7 @@ class GestureTrainSet(data.Dataset):
         data = self.get_snippet(video_id, frame_list)
 
         target = self._get_snippet_labels(video_id, frame_list)
-        #target_individual = torch.tensor(int(label[1]))
+        # target_individual = torch.tensor(int(label[1]))
 
         return data, target
 
@@ -393,12 +393,13 @@ class Sequential2DTestGestureDataSet(data.Dataset):
 
     def _generate_labels_list(self, video_id, gestures):
         labels_list = []
-
+        img_dir = os.path.join(self.root_path, video_id + self.video_suffix)
         for frame_num in self.frame_num_data[self.video_name]:
-            for gesture in gestures:
-                if frame_num >= gesture[0] and frame_num <= gesture[1]:
-                    labels_list.append(self.gesture_ids.index(gesture[2]))
-                    break
+            if os.path.exists(os.path.join(img_dir, self.image_tmpl.format(frame_num))):
+                for gesture in gestures:
+                    if frame_num >= gesture[0] and frame_num <= gesture[1]:
+                        labels_list.append(self.gesture_ids.index(gesture[2]))
+                        break
         # for gesture in gestures:
         #     for idx in range(gesture[0],gesture[1]+1):
         #         labels_list.append(self.gesture_ids.index(gesture[2]))
@@ -409,9 +410,14 @@ class Sequential2DTestGestureDataSet(data.Dataset):
         images = []
         img_dir = os.path.join(self.root_path, video_id + self.video_suffix)
         for idx in self.frame_num_data[self.video_name]:
-            imgs = self._load_image(img_dir, idx)
-            images.extend(imgs)
-        self.image_data[video_id] = images
+            try:
+                imgs = self._load_image(img_dir, idx)
+                images.extend(imgs)
+            except FileNotFoundError:
+                print(
+                    f"{os.path.join(img_dir, self.image_tmpl.format(idx))} does not exist, skipped")
+
+            self.image_data[video_id] = images
 
     def _load_image(self, directory, idx):
         img = Image.open(os.path.join(
@@ -620,7 +626,7 @@ class Gesture2DTrainSet(data.Dataset):
 
             target = label
             res = data, target
-            #target_individual = torch.tensor(int(label[1]))
+            # target_individual = torch.tensor(int(label[1]))
         except FileNotFoundError as e:
             print("skipped over an image because of the following error")
             print(e)
