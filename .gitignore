@@ -30,3 +30,6 @@ __pycache__/load_model.cpython-36.pyc
 utils/__pycache__/resnet2D.cpython-36.pyc
 utils/__pycache__/train_opts_2D.cpython-36.pyc
 utils/__pycache__/transforms.cpython-36.pyc
+2D_trainer.py
+__pycache__/DataStructures.cpython-36.pyc
+utils/__pycache__/train_opts_2D.cpython-36.pyc
