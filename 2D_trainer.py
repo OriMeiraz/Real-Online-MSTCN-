@@ -300,7 +300,7 @@ def main(split=3, upload=False, save_features=False, group=None):
         APAS_folds_folder = os.path.join(APAS_data, "APAS", "folds")
 
     features_path = os.path.join(
-        args.out, "features", args.dataset, "fold "+str(split))
+        args.out, "features", args.dataset, args.arch, "fold "+str(split))
 
     gesture_ids = get_gestures(args.dataset, args.task)
     args.eval_batch_size = 2 * args.batch_size
@@ -431,30 +431,30 @@ def main(split=3, upload=False, save_features=False, group=None):
 
     val_augmentation = torchvision.transforms.Compose([GroupScale(int(256)),
                                                        GroupCenterCrop(args.input_size)])  # need to be corrected
-
-    for video in val_videos:
-        data_set = Sequential2DTestGestureDataSet(root_path=args.data_path, video_id=video[0], frame_count=video[1], transcriptions_dir=args.transcriptions_dir, gesture_ids=gesture_ids,
-                                                  snippet_length=1,
-                                                  sampling_step=6,
-                                                  image_tmpl=args.image_tmpl,
-                                                  video_suffix=args.video_suffix,
-                                                  normalize=normalize,
-                                                  transform=val_augmentation)  # augmentation are off
-        val_loaders.append(torch.utils.data.DataLoader(data_set, batch_size=args.eval_batch_size,
-                                                       shuffle=False, num_workers=args.workers, collate_fn=no_none_collate))
-    if args.dataset == "APAS":
-        for video in list_of_test_examples:
-            data_set = Sequential2DTestGestureDataSet(root_path=args.data_path, video_id=video,
-                                                      transcriptions_dir=args.transcriptions_dir,
-                                                      gesture_ids=gesture_ids,
+    if args.training:
+        for video in val_videos:
+            data_set = Sequential2DTestGestureDataSet(root_path=args.data_path, video_id=video[0], frame_count=video[1], transcriptions_dir=args.transcriptions_dir, gesture_ids=gesture_ids,
                                                       snippet_length=1,
                                                       sampling_step=6,
                                                       image_tmpl=args.image_tmpl,
                                                       video_suffix=args.video_suffix,
                                                       normalize=normalize,
                                                       transform=val_augmentation)  # augmentation are off
-            test_loaders.append(torch.utils.data.DataLoader(data_set, batch_size=args.eval_batch_size,
-                                                            shuffle=False, num_workers=args.workers, collate_fn=no_none_collate))
+            val_loaders.append(torch.utils.data.DataLoader(data_set, batch_size=args.eval_batch_size,
+                                                           shuffle=False, num_workers=args.workers, collate_fn=no_none_collate))
+        if args.dataset == "APAS":
+            for video in list_of_test_examples:
+                data_set = Sequential2DTestGestureDataSet(root_path=args.data_path, video_id=video,
+                                                          transcriptions_dir=args.transcriptions_dir,
+                                                          gesture_ids=gesture_ids,
+                                                          snippet_length=1,
+                                                          sampling_step=6,
+                                                          image_tmpl=args.image_tmpl,
+                                                          video_suffix=args.video_suffix,
+                                                          normalize=normalize,
+                                                          transform=val_augmentation)  # augmentation are off
+                test_loaders.append(torch.utils.data.DataLoader(data_set, batch_size=args.eval_batch_size,
+                                                                shuffle=False, num_workers=args.workers, collate_fn=no_none_collate))
 
     # ===== train model =====
 
@@ -465,111 +465,150 @@ def main(split=3, upload=False, save_features=False, group=None):
     start_epoch = 0
     if checkpoint:
         start_epoch = checkpoint['epoch']
-    for epoch in range(start_epoch, args.epochs):
+    if args.training:
+        for epoch in range(start_epoch, args.epochs):
 
-        train_loss = AverageMeter()
-        train_acc = AverageMeter()
-        model.train()
+            train_loss = AverageMeter()
+            train_acc = AverageMeter()
+            model.train()
 
-        with tqdm.tqdm(desc=f'{"Epoch"} ({epoch}) {"progress"}', total=int(len(train_loader))) as pbar:
+            with tqdm.tqdm(desc=f'{"Epoch"} ({epoch}) {"progress"}', total=int(len(train_loader))) as pbar:
 
-            for batch_i, (data, target) in enumerate(train_loader):
+                for batch_i, (data, target) in enumerate(train_loader):
 
-                # for batch in train_loader:
-                optimizer.zero_grad()
-                # data, target = batch
-                data = Variable(data.to(device_gpu))
-                target = Variable(target.to(device_gpu), requires_grad=False)
-                batch_size = target.size(0)
-                # target = target.to(device_gpu, dtype=torch.int64)
-                output = model(data)
-                # target = target.to(dtype=torch.float)
-                if args.arch.startswith("2D-EfficientNetV2"):
-                    features = output[1]
-                    output = output[0]
+                    # for batch in train_loader:
+                    optimizer.zero_grad()
+                    # data, target = batch
+                    data = Variable(data.to(device_gpu))
+                    target = Variable(target.to(device_gpu),
+                                      requires_grad=False)
+                    batch_size = target.size(0)
+                    # target = target.to(device_gpu, dtype=torch.int64)
+                    output = model(data)
+                    # target = target.to(dtype=torch.float)
+                    if args.arch.startswith("2D-EfficientNetV2"):
+                        features = output[1]
+                        output = output[0]
 
-                loss = criterion(output, target)
+                    loss = criterion(output, target)
 
-                loss = torch.mean(loss)
+                    loss = torch.mean(loss)
 
-                loss.backward()
-                optimizer.step()
+                    loss.backward()
+                    optimizer.step()
 
-                train_loss.update(loss.item(), batch_size)
+                    train_loss.update(loss.item(), batch_size)
 
-                predicted = torch.nn.Softmax(dim=1)(output)
-                _, predicted = torch.max(predicted, 1)
-                # _, predicted = torch.max(output, 1)
+                    predicted = torch.nn.Softmax(dim=1)(output)
+                    _, predicted = torch.max(predicted, 1)
+                    # _, predicted = torch.max(output, 1)
 
-                acc = (predicted == target).sum().item() / batch_size
+                    acc = (predicted == target).sum().item() / batch_size
 
-                train_acc.update(acc, batch_size)
-                pbar.update(1)
+                    train_acc.update(acc, batch_size)
+                    pbar.update(1)
 
-            pbar.close()
-            if scheduler is not None:
-                scheduler.step()
+                pbar.close()
+                if scheduler is not None:
+                    scheduler.step()
 
-        log("Epoch {}: Train loss: {train_loss.avg:.4f} Train acc: {train_acc.avg:.3f}"
-            .format(epoch, train_loss=train_loss, train_acc=train_acc), output_folder)
-        if upload:
-            wandb.log({'train accuracy': train_acc.avg, 'loss': train_loss.avg})
+            log("Epoch {}: Train loss: {train_loss.avg:.4f} Train acc: {train_acc.avg:.3f}"
+                .format(epoch, train_loss=train_loss, train_acc=train_acc), output_folder)
+            if upload:
+                wandb.log({'train accuracy': train_acc.avg,
+                          'loss': train_loss.avg})
 
-        if (epoch + 1) % args.eval_freq == 0 or epoch == args.epochs - 1:
-            log("Start evaluation...", output_folder)
+            if (epoch + 1) % args.eval_freq == 0 or epoch == args.epochs - 1:
+                log("Start evaluation...", output_folder)
 
-            acc, f1, valid_per_video = eval(
-                model, val_loaders, device_gpu, device_cpu, num_classes, output_folder, gesture_ids, upload=upload)
-            all_eval_results.append([split, epoch, acc, f1])
-            full_eval_results = pd.DataFrame(all_eval_results, columns=[
-                                             'split num', 'epoch', 'acc', 'f1'])
-            full_eval_results.to_csv(
-                output_folder + "/" + "evaluation_results.csv", index=False)
+                acc, f1, valid_per_video = eval(
+                    model, val_loaders, device_gpu, device_cpu, num_classes, output_folder, gesture_ids, upload=upload)
+                all_eval_results.append([split, epoch, acc, f1])
+                full_eval_results = pd.DataFrame(all_eval_results, columns=[
+                    'split num', 'epoch', 'acc', 'f1'])
+                full_eval_results.to_csv(
+                    output_folder + "/" + "evaluation_results.csv", index=False)
 
-            if eval_metric == "F1" and f1 > best_metric:
-                best_metric = f1
-                best_epoch = epoch
-                # ===== save model =====
-                model_file = os.path.join(
-                    output_folder, "model_" + str(epoch) + ".pth")
-                torch.save(model.state_dict(), model_file)
-                log("Saved model to " + model_file, output_folder)
+                if eval_metric == "F1" and f1 > best_metric:
+                    best_metric = f1
+                    best_epoch = epoch
+                    # ===== save model =====
+                    model_file = os.path.join(
+                        output_folder, "model_" + str(epoch) + ".pth")
+                    torch.save(model.state_dict(), model_file)
+                    log("Saved model to " + model_file, output_folder)
 
-                # ===== save checkpoint =====
-        current_state = {'epoch': epoch + 1,
-                         'model_weights': model.state_dict(),
-                         'optimizer': optimizer.state_dict(),
-                         'rng': torch.get_rng_state(),
-                         'args': args_dict
-                         }
-        torch.save(current_state, checkpoint_file)
+                    # ===== save checkpoint =====
+            current_state = {'epoch': epoch + 1,
+                             'model_weights': model.state_dict(),
+                             'optimizer': optimizer.state_dict(),
+                             'rng': torch.get_rng_state(),
+                             'args': args_dict
+                             }
+            torch.save(current_state, checkpoint_file)
 
-    model.load_state_dict(torch.load(model_file))
-    log("", output_folder)
-    log("testing based on epoch " + str(best_epoch),
-        output_folder)  # based on epoch XX model
-    acc_test, f1_test, test_per_video = eval(
-        model, test_loaders, device_gpu, device_cpu, num_classes, output_folder, gesture_ids, upload=upload)
+        model.load_state_dict(torch.load(model_file))
+        log("", output_folder)
+        log("testing based on epoch " + str(best_epoch),
+            output_folder)  # based on epoch XX model
+        acc_test, f1_test, test_per_video = eval(
+            model, test_loaders, device_gpu, device_cpu, num_classes, output_folder, gesture_ids, upload=upload)
 
-    if test_per_video is not None:
-        full_test_results = pd.DataFrame(test_per_video, columns=[
-            'video name', 'acc', 'f1'])
-        full_test_results["epoch"] = best_epoch
-        full_test_results["split"] = split
-        full_test_results.to_csv(output_folder + "/" +
-                                 "test_results.csv", index=False)
+        if test_per_video is not None:
+            full_test_results = pd.DataFrame(test_per_video, columns=[
+                'video name', 'acc', 'f1'])
+            full_test_results["epoch"] = best_epoch
+            full_test_results["split"] = split
+            full_test_results.to_csv(output_folder + "/" +
+                                     "test_results.csv", index=False)
 
-    model_file = os.path.join(
-        output_folder, f"final_model_epoch{args.epochs}" + ".pth")
-    torch.save(model.state_dict(), model_file)
-    log(f"Saved the last model for epoch {epoch}...", output_folder)
+        model_file = os.path.join(
+            output_folder, f"final_model_epoch{args.epochs}" + ".pth")
+        torch.save(model.state_dict(), model_file)
+        log(f"Saved the last model for epoch {epoch}...", output_folder)
 
     if save_features is True:
+        path = {'GTEA': {'s': {0: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-s-gtea-extended-augmentation-extended-sample_20221020/0/1605/model_3.pth",
+                               1: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-s-gtea-extended-augmentation-extended-sample_20221020/1/2153/model_31.pth",
+                               2: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-s-gtea-extended-augmentation-extended-sample_20221021/2/0338/model_47.pth",
+                               3: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-s-gtea-extended-augmentation-extended-sample_20221021/3/0922/model_20.pth"},
+                         'm':  {0: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-m-gtea-extended-augmentation-extended-sample_20221025/0/1446/model_13.pth",
+                                1: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-m-gtea-extended-augmentation-extended-sample_20221025/1/2115/model_6.pth",
+                                2: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-m-gtea-extended-augmentation-extended-sample_20221026/2/0344/model_92.pth",
+                                3: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-m-gtea-extended-augmentation-extended-sample_20221026/3/1005/model_103.pth"},
+                         'l': {0: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-l-gtea-extended-augmentation-extended-sample_20221027/0/1233/model_5.pth",
+                               1: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-l-gtea-extended-augmentation-extended-sample_20221028/1/0108/model_6.pth",
+                               2: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-l-gtea-extended-augmentation-extended-sample_20221028/2/1151/model_86.pth",
+                               3: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-l-gtea-extended-augmentation-extended-sample_20221029/3/0019/model_3.pth"}
+                         },
+                "50SALADS": {'s': {0: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-s-50salads_20221107/0/1107/model_1.pth",
+                                   1: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-s-50salads_20221108/1/0448/model_4.pth",
+                                   2: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-s-50salads_20221108/2/2352/model_5.pth",
+                                   3: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-s-50salads_20221109/3/1851/model_0.pth",
+                                   4: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-s-50salads_20221110/4/1334/model_3.pth"},
+                             'm': {0: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-m-50salads_20221114/0/2228/model_2.pth",
+                                   1: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-m-50salads_20221115/1/1436/model_0.pth",
+                                   2: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-m-50salads_20221116/2/0654/model_19.pth",
+                                   3: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-m-50salads_20221116/3/2314/model_1.pth",
+                                   4: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-m-50salads_20221117/4/1531/model_22.pth"},
+                             'l': {0: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-l-50salads_20221107/0/1237/model_8.pth",
+                                   1: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-l-50salads_20221109/1/0436/model_1.pth",
+                                   2: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-l-50salads_20221110/2/2016/model_2.pth",
+                                   3: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-l-50salads_20221112/3/0157/model_8.pth",
+                                   4: "/data/home/ori.meiraz/Real-Online-MSTCN-/output-ori-new/efficientnetv2-l-50salads_20221113/4/0257/model_2.pth"}
+                             }
+                }
+        model.load_state_dict(torch.load(
+            path[args.dataset][args.arch[-1]][split]))
         log("Start  features saving...", output_folder)
 
     # extract Features
         all_loaders = []
-        all_videos = val_videos
+        test_videos = list()
+        for list_file in train_lists:
+            test_videos.extend(
+                [(x.strip().split(',')[0], x.strip().split(',')[1]) for x in open(list_file)])
+        all_videos = val_videos + test_videos
 
         for video in all_videos:
             data_set = Sequential2DTestGestureDataSet(root_path=args.data_path, video_id=video[0], frame_count=video[1],
@@ -580,7 +619,8 @@ def main(split=3, upload=False, save_features=False, group=None):
                                                       image_tmpl=args.image_tmpl,
                                                       video_suffix=args.video_suffix,
                                                       normalize=normalize,
-                                                      transform=val_augmentation)  # augmentation are off
+                                                      transform=val_augmentation,
+                                                      preload=args.preload)  # augmentation are off
             all_loaders.append(torch.utils.data.DataLoader(data_set, batch_size=args.eval_batch_size,
                                                            shuffle=False, num_workers=args.workers, collate_fn=no_none_collate))
 

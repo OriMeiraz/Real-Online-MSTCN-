@@ -106,7 +106,7 @@ parser.add_argument('--input_size', type=int, default=224,
 
 # Training
 
-parser
+parser.add_argument('--training', type=bool, default=True)
 
 parser.add_argument('--resume_exp', type=str, default=None,
                     help="Path to results of former experiment that shall be resumed (untested).")

@@ -344,8 +344,9 @@ class Sequential2DTestGestureDataSet(data.Dataset):
                  snippet_length=16, sampling_step=6,
                  image_tmpl='img_{:05d}.jpg', video_suffix="_capture2",
                  return_3D_tensor=True, return_dense_labels=True,
-                 transform=None, normalize=None):
+                 transform=None, normalize=None, preload=True):
 
+        self.preload = preload
         self.root_path = root_path
         self.video_name = video_id
         self.video_id = video_id
@@ -387,9 +388,10 @@ class Sequential2DTestGestureDataSet(data.Dataset):
         self.frame_num_data[video_id] = list(
             range(_initial_labeled_frame, _final_labaled_frame + 1, self.sampling_step))
         self._generate_labels_list(video_id, gestures)
-        self._preload_images(video_id)
-        assert len(self.image_data[video_id]) == len(
-            self.labels_data[video_id])
+        if self.preload:
+            self._preload_images(video_id)
+            assert len(self.image_data[video_id]) == len(
+                self.labels_data[video_id])
 
     def _generate_labels_list(self, video_id, gestures):
         labels_list = []
@@ -443,10 +445,22 @@ class Sequential2DTestGestureDataSet(data.Dataset):
     def get_snippet(self, video_id, idx):
         snippet = list()
         _idx = max(idx, 0)  # padding if required
-        img = self.image_data[video_id][_idx]
+        if self.preload:
+            img = self.image_data[video_id][_idx]
+        else:
+            try:
+                mg_dir = os.path.join(
+                    self.root_path, video_id + self.video_suffix)
+                img = self._load_image(
+                    mg_dir, self.frame_num_data[self.video_name][idx])
+                img = img[0]
+            except FileNotFoundError:
+                print(
+                    f"{os.path.join(mg_dir, self.image_tmpl.format(idx))} does not exist, skipped")
+
         snippet.append(img)
-        snippet = rotate_snippet(snippet, 0.5)
-        Add_Gaussian_Noise_to_snippet(snippet)
+        #snippet = rotate_snippet(snippet, 0.5)
+        # Add_Gaussian_Noise_to_snippet(snippet)
         snippet = self.transform(snippet)
         snippet = [torchvision.transforms.ToTensor()(img) for img in snippet]
         snippet = snippet[0]
@@ -455,7 +469,7 @@ class Sequential2DTestGestureDataSet(data.Dataset):
         return data
 
     def __len__(self):
-        return (len(self.image_data[self.video_name])) - (self.snippet_length - 1)
+        return (len(self.labels_data[self.video_name])) - (self.snippet_length - 1)
 
 
 class Gesture2DTrainSet(data.Dataset):
@@ -656,7 +670,7 @@ class Gesture2DTrainSet(data.Dataset):
             img = self._load_image(*img)[0]
         snippet.append(img)
         snippet = rotate_snippet(snippet, 0.5)
-        Add_Gaussian_Noise_to_snippet(snippet)
+        # Add_Gaussian_Noise_to_snippet(snippet)
         snippet = self.transform(snippet)
         snippet = [torchvision.transforms.ToTensor()(img) for img in snippet]
         snippet = snippet[0]
